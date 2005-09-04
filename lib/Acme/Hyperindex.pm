@@ -18,7 +18,7 @@ Acme::Hyperindex - Look deep into structures using a list of indexes
   );
 
   print @struct[[ 2, 'j_psi', 1 ]], "\n"; ### Prints gluino
-  my $row = @struct[[ 1, 'j_psi' ]];      ### Row contains [qw( ... )]
+  my $row = @struct[[ 1, 'j_psi' ]];      ### Row contains [qw( selectron down tau_sneutrino )]
 
 =head1 DESCRIPTION
 
@@ -55,11 +55,28 @@ Two problems here: Perl will tell you 'Not an ARRAY reference'
 once we try to index in the hash on 'pion' with this array indexing syntax.
 It's damn ugly and looks complicated.
 
-So Acme::Hyperindex lets you index on a .... amount of ...
+So Acme::Hyperindex lets you index arbitrary deep into data structures:
 
   my $particle = @struct[[ 0, 'pion', 2 ]];
     -- or even --
   my $particle = @struct[[ @indexes ]];
+    -- or --
+  my $particle = @struct[[ get_index() ]];
+    -- or --
+  my $particle = @struct[[ $particleindexes[[ 3, 42 ]] ]];
+
+Acme::Hyperindex now also lets you index on scalars, arrays and hashes:
+
+  $struct[[ ... ]];
+  @struct[[ ... ]];
+  %struct[[ ... ]];
+
+And lists ary auto-derefed in list context:
+
+  my $struct = [ [qw(a b c)], [qw(d e f)] ];
+
+  my $foo = $struct[[ 0 ]]; # $foo contains a ref to qw(a b c)
+  my @foo = $struct[[ 0 ]]; # @foo contains qw(a b c)
 
 =cut
 
@@ -74,36 +91,82 @@ use Filter::Simple;
 
 @EXPORT = qw(hyperindex);
 
-$VERSION = 0.02;
+$VERSION = 0.11;
 
 FILTER_ONLY
-    code => sub { s/(\$|\@)\s*(\w+)\[\[(.*?)\]\]/hyperindex( $1$2, \@{[ $3 ]} )/g };
+    code => sub {
+        my $rx;
+        $rx = qr{
+            ([\$\@\%]) \s* (\w+) \s* \[\[
+            (
+                [^\[\]]*
+                (?: \[[^\[]
+                |   \][^\]]
+                |   (?{{ $rx }}) [^\[\]]*
+                )*
+            )\]\]
+        }x;
+        ### We need while for $a[[ $b[[ ]] ]] situations
+        1 while s/$rx/"hyperindex( ". ($1 eq '$' ? '' : '\\') ."$1$2, $3 )"/eg;
+    };
 
-sub hyperindex ($\@) {
+sub hyperindex {
     my $structure = shift;
-    my $indexes   = shift;
+    my @indexes   = @_;
 
+    if ( ref $structure eq 'SCALAR' ) {
+        $structure = $$structure;
+    }
     my $item = $structure;
-    for my $index ( @$indexes ) {
-        if ( ref $item eq 'HASH' ) {
+    for my $index ( @indexes ) {
+        if      ( ref $item eq 'HASH' ) {
             $item = $item->{$index};
-        } elsif ( ref $item eq 'ARRAY' ) {
+        }
+        elsif   ( ref $item eq 'ARRAY' ) {
             $item = $item->[$index];
-        } else {
-            use Data::Dumper;
-            print Dumper { item => $item, struct => $structure, index => $index, indexes => $indexes };
-            croak "Can't index on type '". (ref($item) || 'undef') ."' with index '$index'";
+        }
+        else {
+            ref($item) or croak "Hyperindexing on '$index', but datastructure is at maximum depth";
+            die "Hmm, error in hyperindexing: index => $index item => $item";
+        }
+    }
+
+    if ( ref $item ) {
+        if ( ref($item) eq 'ARRAY' and wantarray ) {
+            return @{$item};
+        }
+        if ( ref($item) eq 'HASH' and wantarray ) {
+            return %$item;
         }
     }
 
     return $item;
 }
 
+=head1 BUGS
+
+Perl code is hard to parse, and there are surely
+situations where my parsing fails to do the right
+thing.
+
 =head1 TODO
 
 =over 4
 
-=item * make hyperindex work for all perl's datatypes
+=item * make the sourcefilter optionally
+
+=item * Scalar references within the datasructure..
+
+  my $struct = [ \[qw(a b c)] ];
+
+There should be some way to get to 'a'
+
+=item * Generate nonexisting references optionally
+
+Whe you try to index deeper than the data structure is:
+
+  my $struct = [];
+  $struct[[ 0, 'foo', 42 ]];
 
 =back
 
