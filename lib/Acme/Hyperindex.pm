@@ -91,7 +91,7 @@ use Filter::Simple;
 
 @EXPORT = qw(hyperindex);
 
-$VERSION = 0.11;
+$VERSION = 0.12;
 
 FILTER_ONLY
     code => sub {
@@ -163,7 +163,7 @@ There should be some way to get to 'a'
 
 =item * Generate nonexisting references optionally
 
-Whe you try to index deeper than the data structure is:
+When you try to index deeper than the data structure is:
 
   my $struct = [];
   $struct[[ 0, 'foo', 42 ]];
